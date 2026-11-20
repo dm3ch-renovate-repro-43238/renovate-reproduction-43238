@@ -6,6 +6,7 @@ jobs:
   example:
     runs-on: ubuntu-latest
     steps:
-      # Public action of an organization with an IP allow list.
-      # v0.3.1 is the latest release, so Renovate should propose an update.
+      # Public actions of an organization with an IP allow list.
+      # Newer releases exist, so Renovate should propose updates.
       - uses: aquasecurity/setup-trivy@v0.2.6
+      - uses: aquasecurity/trivy-action@v0.35.0

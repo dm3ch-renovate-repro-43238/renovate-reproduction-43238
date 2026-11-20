@@ -40,37 +40,48 @@ jobs:
           LOG_LEVEL: debug
         run: npx --yes renovate 2>&1 | tee released.log
       # Same job, so the same runner IP address as the released Renovate above.
-      # Outside the workspace, so Renovate does not scan its own workflow files.
-      - name: Fetch the Renovate fix
-        run: |
-          # https://github.com/renovatebot/renovate/pull/48249
-          sha=5f302ec08db1bb64c5317ddf81b39591e28cadda
-          git init -q "$RUNNER_TEMP/renovate-fix"
-          git -C "$RUNNER_TEMP/renovate-fix" fetch -q --depth 1 https://github.com/dm3ch/renovate.git "$sha"
-          git -C "$RUNNER_TEMP/renovate-fix" checkout -q FETCH_HEAD
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Run Renovate with the fix without changing anything
+      # Outside the workspace, so Renovate does not scan its own workflow files.
+      - name: Fetch and install the Renovate fixes
+        run: |
+          corepack enable
+          # https://github.com/renovatebot/renovate/pull/48249
+          # before: REST without a token after GraphQL is refused
+          # after: also skips GraphQL for an organization which already refused the token
+          for build in before:5f302ec08db1bb64c5317ddf81b39591e28cadda after:bce9f00a1bd5337dd9e82aa81c67bff09f324667; do
+            name=${build%%:*}
+            sha=${build#*:}
+            dir="$RUNNER_TEMP/renovate-$name"
+            git init -q "$dir"
+            git -C "$dir" fetch -q --depth 1 https://github.com/dm3ch/renovate.git "$sha"
+            git -C "$dir" checkout -q FETCH_HEAD
+            (cd "$dir" && pnpm install --frozen-lockfile >/dev/null)
+          done
+      - name: Run Renovate before the skip without changing anything
         env:
           RENOVATE_PLATFORM: local
           RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
           LOG_LEVEL: debug
-        run: |
-          corepack enable
-          (cd "$RUNNER_TEMP/renovate-fix" && pnpm install --frozen-lockfile >/dev/null)
-          node "$RUNNER_TEMP/renovate-fix/lib/renovate.ts" 2>&1 | tee fixed.log
+        run: node "$RUNNER_TEMP/renovate-before/lib/renovate.ts" 2>&1 | tee before.log
+      - name: Run Renovate after the skip without changing anything
+        env:
+          RENOVATE_PLATFORM: local
+          RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
+          LOG_LEVEL: debug
+        run: node "$RUNNER_TEMP/renovate-after/lib/renovate.ts" 2>&1 | tee after.log
       - name: Show lookup results
         if: always()
         run: |
           {
-            echo '### Result of the lookup of `aquasecurity/setup-trivy`'
-            echo '| Renovate | Version | Update found | Lookup failures |'
+            echo '### Lookups of `aquasecurity/setup-trivy` and `aquasecurity/trivy-action`'
+            echo '| Renovate | Updates found | Lookup failures | Requests to api.github.com |'
             echo '| :-- | :-- | :-- | :-- |'
-            for kind in released fixed; do
-              version=$(grep -m1 -o '"renovateVersion": *"[^"]*"' $kind.log | cut -d'"' -f4)
-              found=$(grep -c '"newValue": "v0.3.1"' $kind.log || true)
+            for kind in released before after; do
+              found=$(grep -cE '"newValue": "v0\.3\.1"|"newValue": "v0\.36\.0"' $kind.log || true)
               failed=$(grep -c 'Failed to look up' $kind.log || true)
-              echo "| $kind | $version | $([ "$found" -gt 0 ] && echo yes || echo NO) | $failed |"
+              requests=$(grep -A1 '"api.github.com": {' $kind.log | grep -m1 -o '"count": [0-9]*' | grep -o '[0-9]*')
+              echo "| $kind | $found of 2 | $failed | $requests |"
             done
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
