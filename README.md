@@ -8,6 +8,15 @@ and Renovate runs from an IP address which is not on that list.
 - Earlier report: <https://github.com/renovatebot/renovate/discussions/17826>
 - Same GitHub behavior in another tool: <https://github.com/github/gh-actions-lock/issues/274>
 
+## Status
+
+**Not reproduced on 2026-11-20.**
+Two runs on GitHub-hosted runners (Renovate 44.257.0, runner IP 52.242.243.207) did not hit the refusal: `aquasecurity/setup-trivy`, `aquasecurity/trivy-action`, `aquasecurity/trivy` and `bridgecrewio/checkov-action` were all readable with the `GITHUB_TOKEN`.
+The refusal depends on the IP address of the runner and on the current allow list of the organization, so it is intermittent or no longer applies to these organizations.
+See [the first run](https://github.com/dm3ch/renovate-reproduction-43238/actions/runs/44745583620).
+
+The report in <https://github.com/github/gh-actions-lock/issues/274> shows the refusal for `aquasecurity/setup-trivy` on a GitHub-hosted runner with a `GITHUB_TOKEN`.
+
 ## Files
 
 | File                                    | Purpose                                                                                                 |
@@ -24,11 +33,9 @@ and Renovate runs from an IP address which is not on that list.
 The workflow runs on a GitHub-hosted runner, because its IP address is not on the allow list of the `aquasecurity` organization.
 It cannot be reproduced from an IP address which is on the allow list, so running Renovate on a machine which is allowed shows no problem.
 
-Example run: <!-- TODO: link to a run of the workflow -->
-
 ## Current behavior
 
-GitHub refuses the token, even though `aquasecurity/setup-trivy` is public and can be read without a token.
+When the refusal happens, GitHub refuses the token, even though `aquasecurity/setup-trivy` is public and can be read without a token.
 Renovate does not find any release, and logs the refusal:
 
 ```text
@@ -37,8 +44,6 @@ Although you appear to have the correct authorization credentials, the `aquasecu
 
 No update is proposed for `aquasecurity/setup-trivy`.
 The lookup for `actions/checkout` in the same run is the control: it works, because that organization does not refuse the token.
-
-<!-- TODO: after the first run, check that the log lines above match what the run shows, and adjust them if not. -->
 
 ## Expected behavior
 
@@ -49,7 +54,3 @@ The same request without a token succeeds:
 ```sh
 curl -s https://api.github.com/repos/aquasecurity/setup-trivy/tags?per_page=1
 ```
-
-## Proposed fix
-
-<!-- TODO: link to the pull request -->
