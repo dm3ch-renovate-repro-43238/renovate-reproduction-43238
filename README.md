@@ -11,11 +11,11 @@ and Renovate runs from an IP address which is not on that list.
 
 ## Files
 
-| File                                    | Purpose                                                                                                       |
-| :-------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
-| `renovate.json`                         | Only enables the `github-actions` manager.                                                                    |
-| `.github/workflows/example.yml`         | Uses the public action `aquasecurity/setup-trivy@v0.2.6`. The latest release is `v0.3.1`.                     |
-| `.github/workflows/renovate-lookup.yml` | Checks access with an authenticated `curl`, then runs the released Renovate and the proposed fix (read-only). |
+| File                                    | Purpose                                                                                                                     |
+| :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| `renovate.json`                         | Only enables the `github-actions` manager.                                                                                  |
+| `.github/workflows/example.yml`         | Uses the public action `aquasecurity/setup-trivy@v0.2.6`. The latest release is `v0.3.1`.                                   |
+| `.github/workflows/renovate-lookup.yml` | Checks access with an authenticated `curl`, then runs the released Renovate and two builds of the proposed fix (read-only). |
 
 ## Steps to reproduce
 
@@ -54,12 +54,17 @@ curl -s "https://api.github.com/repos/aquasecurity/setup-trivy/tags?per_page=1"
 
 ## Result
 
-[Run](https://github.com/dm3ch-renovate-repro-43238/renovate-reproduction-43238/actions/runs/44755009624) on 3 runners, each running both Renovate builds one after the other, so with the same IP address:
+[Run](https://github.com/dm3ch-renovate-repro-43238/renovate-reproduction-43238/actions/runs/44758228894) on 3 runners, each running all builds one after the other, so with the same IP address.
+Both actions should get an update, `v0.3.1` and `v0.36.0`:
 
-| Renovate                                                           | `setup-trivy` update found | Lookup failures |
-| :----------------------------------------------------------------- | :------------------------- | :-------------- |
-| 44.257.0 (released)                                                | no                         | 2               |
-| [proposed fix](https://github.com/renovatebot/renovate/pull/48249) | yes (`v0.3.1`)             | 0               |
+| Renovate                                                                                 | Runner 1      | Runner 2    | Runner 3    |
+| :--------------------------------------------------------------------------------------- | :------------ | :---------- | :---------- |
+| 44.257.0 (released): updates found / requests to `api.github.com`                        | 0 of 2 / 12   | 0 of 2 / 12 | 0 of 2 / 12 |
+| [fix](https://github.com/renovatebot/renovate/pull/48249), REST after GraphQL is refused | 0 of 2 / 4 \* | 2 of 2 / 8  | 2 of 2 / 8  |
+| fix, also skips GraphQL for an organization which refused the token                      | 2 of 2 / 6    | 2 of 2 / 6  | 2 of 2 / 6  |
+
+\* The requests without a token were rate limited: GitHub allows 60 per hour for an IP address, and runners share addresses.
+Renovate then reports the original error, like the released version.
 
 ## Why it can be hard to reproduce
 
