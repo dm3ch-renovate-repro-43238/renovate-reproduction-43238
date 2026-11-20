@@ -7,61 +7,62 @@ and Renovate runs from an IP address which is not on that list.
 - Discussion: <https://github.com/renovatebot/renovate/discussions/43238>
 - Earlier report: <https://github.com/renovatebot/renovate/discussions/17826>
 - Same GitHub behavior in another tool: <https://github.com/github/gh-actions-lock/issues/274>
-
-## Status
-
-**Not reproduced on 2026-11-20.**
-
-The workflow first checks access with an authenticated `curl` (the job's `GITHUB_TOKEN`, REST and GraphQL), then runs Renovate 44.257.0.
-[Run with 6 runners](https://github.com/dm3ch/renovate-reproduction-43238/actions/runs/44746374888) (6 different runner IPs):
-
-| Check                                                                                           | Result                                    |
-| :---------------------------------------------------------------------------------------------- | :---------------------------------------- |
-| Authenticated `curl`, REST and GraphQL, for 3 repositories of `aquasecurity` and `bridgecrewio` | 36 of 36 requests returned `200`          |
-| IP allow list refusal in any response                                                           | none                                      |
-| Renovate lookup of `aquasecurity/setup-trivy`                                                   | found `v0.3.1` on all 6 runners, no error |
-
-GitHub did not refuse the token, so there was nothing for Renovate to fail on.
-This says nothing about whether Renovate handles the refusal: Renovate has no code for it, and the first [run](https://github.com/dm3ch/renovate-reproduction-43238/actions/runs/44745583620) just did not hit it.
-The refusal depends on the IP address of the runner and on the current allow list of the organization.
-
-The report in <https://github.com/github/gh-actions-lock/issues/274> shows the refusal for `aquasecurity/setup-trivy` on a GitHub-hosted runner with a `GITHUB_TOKEN`.
-When the `curl` step shows `YES` in the last column, the repository is in the failing state and Renovate is expected to fail too.
+- Proposed fix: <https://github.com/renovatebot/renovate/pull/48249>
 
 ## Files
 
-| File                                    | Purpose                                                                                                 |
-| :-------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| `renovate.json`                         | Only enables the `github-actions` manager.                                                              |
-| `.github/workflows/example.yml`         | Uses the public action `aquasecurity/setup-trivy@v0.2.6`. The latest release is `v0.3.1`.               |
-| `.github/workflows/renovate-lookup.yml` | Runs Renovate (read-only, `RENOVATE_PLATFORM=local`) on a GitHub-hosted runner with the `GITHUB_TOKEN`. |
+| File                                    | Purpose                                                                                                       |
+| :-------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `renovate.json`                         | Only enables the `github-actions` manager.                                                                    |
+| `.github/workflows/example.yml`         | Uses the public action `aquasecurity/setup-trivy@v0.2.6`. The latest release is `v0.3.1`.                     |
+| `.github/workflows/renovate-lookup.yml` | Checks access with an authenticated `curl`, then runs the released Renovate and the proposed fix (read-only). |
 
 ## Steps to reproduce
 
 1. Go to **Actions**, select **Renovate lookup**, and choose **Run workflow**.
-2. Open the job summary, or the `Run Renovate without changing anything` step.
+2. Open the job summary, or the steps of the job.
 
-The workflow runs on a GitHub-hosted runner, because its IP address is not on the allow list of the `aquasecurity` organization.
-It cannot be reproduced from an IP address which is on the allow list, so running Renovate on a machine which is allowed shows no problem.
+The workflow runs on GitHub-hosted runners with the `GITHUB_TOKEN` of this repository.
+**This repository must belong to an organization**: the refusal did not happen for a repository of a personal account.
 
 ## Current behavior
 
-When the refusal happens, GitHub refuses the token, even though `aquasecurity/setup-trivy` is public and can be read without a token.
-Renovate does not find any release, and logs the refusal:
+GitHub refuses the token, even though `aquasecurity/setup-trivy` is public and can be read without a token.
+The `curl` step shows it, for REST (HTTP `403`) and for GraphQL (HTTP `200` with an error in the body):
 
 ```text
-Although you appear to have the correct authorization credentials, the `aquasecurity` organization has an IP allow list enabled, and <runner IP> is not permitted to access this resource.
+| REST `aquasecurity/setup-trivy`    | 403 | YES |
+| GraphQL `aquasecurity/setup-trivy` | 200 | YES |
 ```
 
-No update is proposed for `aquasecurity/setup-trivy`.
-The lookup for `actions/checkout` in the same run is the control: it works, because that organization does not refuse the token.
+Renovate 44.257.0 then finds no release, and no update is proposed for `aquasecurity/setup-trivy`:
+
+```text
+DEBUG: Failed to look up github-tags package aquasecurity/setup-trivy: no-result
+```
+
+The update of `actions/checkout` in the same run is the control: that organization does not refuse the token.
 
 ## Expected behavior
 
-Renovate finds the releases of the public repository and proposes the update from `v0.2.6` to `v0.3.1`, as it does when run from an IP address which is allowed.
-
-The same request without a token succeeds:
+Renovate finds the releases of the public repository and proposes the update from `v0.2.6` to `v0.3.1`.
+The same requests without a token succeed, but only for REST: the GraphQL API of GitHub can't be used without a token.
 
 ```sh
-curl -s https://api.github.com/repos/aquasecurity/setup-trivy/tags?per_page=1
+curl -s "https://api.github.com/repos/aquasecurity/setup-trivy/tags?per_page=1"
 ```
+
+## Result
+
+[Run](https://github.com/dm3ch-renovate-repro-43238/renovate-reproduction-43238/actions/runs/44755009624) on 3 runners, each running both Renovate builds one after the other, so with the same IP address:
+
+| Renovate                                                           | `setup-trivy` update found | Lookup failures |
+| :----------------------------------------------------------------- | :------------------------- | :-------------- |
+| 44.257.0 (released)                                                | no                         | 2               |
+| [proposed fix](https://github.com/renovatebot/renovate/pull/48249) | yes (`v0.3.1`)             | 0               |
+
+## Why it can be hard to reproduce
+
+- The refusal depends on the current allow list of the organization. `aquasecurity` has said its list is temporary.
+- In a repository of a personal account, 36 runners with 36 different IP addresses and 216 authenticated requests did not hit the refusal.
+  The `GITHUB_TOKEN` of such a repository is an installation token of a user, not of an organization.
