@@ -4,27 +4,48 @@ permissions:
   contents: read
 jobs:
   lookup:
-    # GitHub-hosted runner: its IP address is not on the allow list of the
-    # organizations which own the actions in `example.yml`.
+    # GitHub-hosted runner: whether its IP address is on the allow list of the
+    # organizations which own the actions in `example.yml` varies by runner,
+    # so the job runs several times.
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Check access with an authenticated request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Runner IP: $(curl -s https://api.ipify.org)"
+            echo '| Request | Authenticated | IP allow list refusal |'
+            echo '| :-- | :-- | :-- |'
+            for repo in aquasecurity/setup-trivy aquasecurity/trivy-action bridgecrewio/checkov-action; do
+              owner=${repo%/*}; name=${repo#*/}
+              code=$(curl -s -o rest.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$repo/tags?per_page=1")
+              echo "| REST \`$repo\` | $code | $(grep -qs 'IP allow list' rest.json && echo YES || echo no) |"
+              query=$(printf '{"query":"query{repository(owner:\\"%s\\",name:\\"%s\\"){refs(refPrefix:\\"refs/tags/\\",first:1){totalCount}}}"}' "$owner" "$name")
+              code=$(curl -s -o gql.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -d "$query" https://api.github.com/graphql)
+              echo "| GraphQL \`$repo\` | $code | $(grep -qs 'IP allow list' gql.json && echo YES || echo no) |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Run Renovate without changing anything
         env:
           RENOVATE_PLATFORM: local
           RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
           LOG_LEVEL: debug
         run: npx --yes renovate 2>&1 | tee renovate.log
-      - name: Show lookup problems
+      - name: Show lookup result
         if: always()
         run: |
           {
-            echo '### Renovate version'
-            grep -m1 -o '"version": *"[^"]*"' renovate.log || true
-            echo '### Lookup problems'
+            echo "### Renovate $(grep -m1 -o '"renovateVersion": *"[^"]*"' renovate.log)"
             echo '```'
-            grep -E 'IP allow list|Failed to look up|Datasource unauthorized' renovate.log || echo '(none)'
+            grep -E 'IP allow list|Failed to look up|Datasource unauthorized' renovate.log || echo '(no lookup problems)'
+            grep -A12 '"depName": "aquasecurity/setup-trivy"' renovate.log | grep -m1 '"newValue"' || echo '(no update found for aquasecurity/setup-trivy)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
