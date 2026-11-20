@@ -44,7 +44,7 @@ jobs:
       - name: Fetch the Renovate fix
         run: |
           # https://github.com/renovatebot/renovate/pull/48249
-          sha=85d007b2d4b42c0f724f00452efe26330b34760b
+          sha=5f302ec08db1bb64c5317ddf81b39591e28cadda
           git init -q "$RUNNER_TEMP/renovate-fix"
           git -C "$RUNNER_TEMP/renovate-fix" fetch -q --depth 1 https://github.com/dm3ch/renovate.git "$sha"
           git -C "$RUNNER_TEMP/renovate-fix" checkout -q FETCH_HEAD
