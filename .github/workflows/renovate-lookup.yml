@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4, 5, 6]
+        attempt: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -33,19 +33,43 @@ jobs:
               echo "| GraphQL \`$repo\` | $code | $(grep -qs 'IP allow list' gql.json && echo YES || echo no) |"
             done
           } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Run Renovate without changing anything
+      - name: Run released Renovate without changing anything
         env:
           RENOVATE_PLATFORM: local
           RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
           LOG_LEVEL: debug
-        run: npx --yes renovate 2>&1 | tee renovate.log
-      - name: Show lookup result
+        run: npx --yes renovate 2>&1 | tee released.log
+      # Same job, so the same runner IP address as the released Renovate above.
+      - uses: actions/checkout@v6
+        with:
+          repository: dm3ch/renovate
+          # https://github.com/renovatebot/renovate/pull/48249
+          ref: 85d007b2d4b42c0f724f00452efe26330b34760b
+          path: ${{ runner.temp }}/renovate-fix
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Run Renovate with the fix without changing anything
+        env:
+          RENOVATE_PLATFORM: local
+          RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
+          LOG_LEVEL: debug
+        run: |
+          corepack enable
+          (cd "$RUNNER_TEMP/renovate-fix" && pnpm install --frozen-lockfile >/dev/null)
+          node "$RUNNER_TEMP/renovate-fix/lib/renovate.ts" 2>&1 | tee fixed.log
+      - name: Show lookup results
         if: always()
         run: |
           {
-            echo "### Renovate $(grep -m1 -o '"renovateVersion": *"[^"]*"' renovate.log)"
-            echo '```'
-            grep -E 'IP allow list|Failed to look up|Datasource unauthorized' renovate.log || echo '(no lookup problems)'
-            grep -A12 '"depName": "aquasecurity/setup-trivy"' renovate.log | grep -m1 '"newValue"' || echo '(no update found for aquasecurity/setup-trivy)'
-            echo '```'
+            echo '### Result of the lookup of `aquasecurity/setup-trivy`'
+            echo '| Renovate | Version | Update found | Lookup failures |'
+            echo '| :-- | :-- | :-- | :-- |'
+            for kind in released fixed; do
+              version=$(grep -m1 -o '"renovateVersion": *"[^"]*"' $kind.log | cut -d'"' -f4)
+              found=$(grep -c '"newValue": "v0.3.1"' $kind.log || true)
+              failed=$(grep -c 'Failed to look up' $kind.log || true)
+              echo "| $kind | $version | $([ "$found" -gt 0 ] && echo yes || echo NO) | $failed |"
+            done
           } >> "$GITHUB_STEP_SUMMARY"
