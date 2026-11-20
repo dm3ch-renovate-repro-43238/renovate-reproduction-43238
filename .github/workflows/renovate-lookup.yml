@@ -1,0 +1,30 @@
+name: Renovate lookup
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  lookup:
+    # GitHub-hosted runner: its IP address is not on the allow list of the
+    # organizations which own the actions in `example.yml`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Run Renovate without changing anything
+        env:
+          RENOVATE_PLATFORM: local
+          RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
+          LOG_LEVEL: debug
+        run: npx --yes renovate 2>&1 | tee renovate.log
+      - name: Show lookup problems
+        if: always()
+        run: |
+          {
+            echo '### Renovate version'
+            grep -m1 -o '"version": *"[^"]*"' renovate.log || true
+            echo '### Lookup problems'
+            echo '```'
+            grep -E 'IP allow list|Failed to look up|Datasource unauthorized' renovate.log || echo '(none)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

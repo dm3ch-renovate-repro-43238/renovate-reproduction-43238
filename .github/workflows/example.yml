@@ -1,0 +1,11 @@
+name: Example
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      # Public action of an organization with an IP allow list.
+      # v0.3.1 is the latest release, so Renovate should propose an update.
+      - uses: aquasecurity/setup-trivy@v0.2.6
