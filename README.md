@@ -11,11 +11,22 @@ and Renovate runs from an IP address which is not on that list.
 ## Status
 
 **Not reproduced on 2026-11-20.**
-Two runs on GitHub-hosted runners (Renovate 44.257.0, runner IP 52.242.243.207) did not hit the refusal: `aquasecurity/setup-trivy`, `aquasecurity/trivy-action`, `aquasecurity/trivy` and `bridgecrewio/checkov-action` were all readable with the `GITHUB_TOKEN`.
-The refusal depends on the IP address of the runner and on the current allow list of the organization, so it is intermittent or no longer applies to these organizations.
-See [the first run](https://github.com/dm3ch/renovate-reproduction-43238/actions/runs/44745583620).
+
+The workflow first checks access with an authenticated `curl` (the job's `GITHUB_TOKEN`, REST and GraphQL), then runs Renovate 44.257.0.
+[Run with 6 runners](https://github.com/dm3ch/renovate-reproduction-43238/actions/runs/44746374888) (6 different runner IPs):
+
+| Check                                                                                           | Result                                    |
+| :---------------------------------------------------------------------------------------------- | :---------------------------------------- |
+| Authenticated `curl`, REST and GraphQL, for 3 repositories of `aquasecurity` and `bridgecrewio` | 36 of 36 requests returned `200`          |
+| IP allow list refusal in any response                                                           | none                                      |
+| Renovate lookup of `aquasecurity/setup-trivy`                                                   | found `v0.3.1` on all 6 runners, no error |
+
+GitHub did not refuse the token, so there was nothing for Renovate to fail on.
+This says nothing about whether Renovate handles the refusal: Renovate has no code for it, and the first [run](https://github.com/dm3ch/renovate-reproduction-43238/actions/runs/44745583620) just did not hit it.
+The refusal depends on the IP address of the runner and on the current allow list of the organization.
 
 The report in <https://github.com/github/gh-actions-lock/issues/274> shows the refusal for `aquasecurity/setup-trivy` on a GitHub-hosted runner with a `GITHUB_TOKEN`.
+When the `curl` step shows `YES` in the last column, the repository is in the failing state and Renovate is expected to fail too.
 
 ## Files
 
